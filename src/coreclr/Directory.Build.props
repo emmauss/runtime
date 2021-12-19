@@ -8,6 +8,9 @@
     <Configuration Condition="'$(Configuration)' == 'release'">Release</Configuration>
     <Configuration Condition="'$(Configuration)' == 'checked'">Checked</Configuration>
 
+    <!-- Version of the Android SDK we target, keep in sync with src/libraries/Native/build-native.sh -->
+    <AndroidApiVersion>21</AndroidApiVersion>
+
     <UseMonoRuntime>false</UseMonoRuntime>
   </PropertyGroup>
 
