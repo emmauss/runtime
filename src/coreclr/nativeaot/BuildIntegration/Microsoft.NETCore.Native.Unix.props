@@ -36,13 +36,13 @@ The .NET Foundation licenses this file to you under the MIT license.
       <CrossCompileArch Condition="$(CrossCompileRid.EndsWith('-arm64'))">aarch64</CrossCompileArch>
 
       <AndroidApiLevel Condition="'$(IsAndroid)' == 'true' and '$(AndroidApiLevel)' == ''">21</AndroidApiLevel>
-      
+	  
       <TargetTriple Condition="'$(IsAndroid)' == 'true' and '$(CrossCompileArch)' == 'arm'">arm-linux-androideabi$(AndroidApiLevel)</TargetTriple>
       <TargetTriple Condition="'$(IsAndroid)' == 'true' and $(CrossCompileArch.StartsWith('x86'))">$(CrossCompileArch)-android$(AndroidApiLevel)</TargetTriple>
       <TargetTriple Condition="'$(IsAndroid)' == 'true' and !$(CrossCompileArch.StartsWith('x86')) and '$(CrossCompileArch)' != 'arm'">$(CrossCompileArch)-linux-android$(AndroidApiLevel)</TargetTriple>
       <TargetTriple Condition="'$(IsAndroid)' != 'true' and '$(CrossCompileArch)' != ''">$(CrossCompileArch)-linux-gnu</TargetTriple>
       <TargetTriple Condition="'$(IsAndroid)' != 'true' and '$(CrossCompileArch)' != '' and ($(CrossCompileRid.StartsWith('linux-musl')) or $(CrossCompileRid.StartsWith('alpine')))">$(CrossCompileArch)-alpine-linux-musl</TargetTriple>
-
+	  
       <IlcRPath Condition="'$(IlcRPath)' == '' and '$(TargetOS)' != 'OSX'">$ORIGIN</IlcRPath>
       <IlcRPath Condition="'$(IlcRPath)' == '' and '$(TargetOS)' == 'OSX'">@executable_path</IlcRPath>
     </PropertyGroup>
