@@ -18,24 +18,6 @@
         <ExcludeList Include="$(XunitTestBinBase)/baseservices/mono/runningmono/*">
             <Issue>This test is to verify we are running mono, and therefore only makes sense on mono.</Issue>
         </ExcludeList>
-        <ExcludeList Include="$(XUnitTestBinBase)/baseservices/threading/threadpool/bindhandle/bindhandleinvalid/*">
-            <Issue>https://github.com/dotnet/runtime/issues/66273</Issue>
-        </ExcludeList>
-        <ExcludeList Include="$(XUnitTestBinBase)/baseservices/threading/threadpool/bindhandle/bindhandleinvalid3/*">
-            <Issue>https://github.com/dotnet/runtime/issues/66273</Issue>
-        </ExcludeList>
-        <ExcludeList Include="$(XUnitTestBinBase)/baseservices/threading/threadpool/bindhandle/bindhandleinvalid4/*">
-            <Issue>https://github.com/dotnet/runtime/issues/66273</Issue>
-        </ExcludeList>
-        <ExcludeList Include="$(XUnitTestBinBase)/baseservices/threading/threadpool/bindhandle/bindhandleinvalid5/*">
-            <Issue>https://github.com/dotnet/runtime/issues/66273</Issue>
-        </ExcludeList>
-        <ExcludeList Include="$(XUnitTestBinBase)/baseservices/threading/threadpool/bindhandle/bindhandleinvalid6/*">
-            <Issue>https://github.com/dotnet/runtime/issues/66273</Issue>
-        </ExcludeList>
-        <ExcludeList Include="$(XUnitTestBinBase)/baseservices/threading/threadpool/bindhandle/bindhandlenull/*">
-            <Issue>https://github.com/dotnet/runtime/issues/66274</Issue>
-        </ExcludeList>
         <ExcludeList Include="$(XunitTestBinBase)/GC/Coverage/271010/**">
             <Issue>https://github.com/dotnet/runtime/issues/5933</Issue>
         </ExcludeList>
@@ -923,6 +905,9 @@
 
       <!-- NativeAOT specific -->
     <ItemGroup Condition="'$(XunitTestBinBase)' != '' and '$(TestBuildMode)' == 'nativeaot' and '$(RuntimeFlavor)' == 'coreclr'">
+        <ExcludeList Include="$(XunitTestBinBase)/nativeaot/SmokeTests/MultiModule/MultiModule/*">
+            <Issue>https://github.com/dotnet/runtime/issues/66191</Issue>
+        </ExcludeList>
         <ExcludeList Include="$(XunitTestBinBase)/baseservices/callconvs/TestCallingConventions/*">
             <Issue>https://github.com/dotnet/runtimelab/issues/153</Issue>
         </ExcludeList>
