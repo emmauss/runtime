@@ -302,14 +302,6 @@ void CodeGen::genCodeForTreeNode(GenTree* treeNode)
             break;
 
 #ifdef TARGET_ARM64
-        case GT_MADD:
-            genCodeForMadd(treeNode->AsOp());
-            break;
-
-        case GT_MSUB:
-            genCodeForMsub(treeNode->AsOp());
-            break;
-
         case GT_INC_SATURATE:
             genCodeForIncSaturate(treeNode);
             break;
@@ -751,12 +743,6 @@ void CodeGen::genPutArgStk(GenTreePutArgStk* treeNode)
     // we are storing arg slot number in GT_PUTARG_STK node in lowering phase.
     unsigned argOffsetOut = treeNode->getArgOffset();
 
-#ifdef DEBUG
-    CallArg* callArg = treeNode->gtCall->gtArgs.FindByNode(treeNode);
-    assert(callArg != nullptr);
-    DEBUG_ARG_SLOTS_ASSERT(argOffsetOut == (callArg->AbiInfo.SlotNum * TARGET_POINTER_SIZE));
-#endif // DEBUG
-
     // Whether to setup stk arg in incoming or out-going arg area?
     // Fast tail calls implemented as epilog+jmp = stk arg is setup in incoming arg area.
     // All other calls - stk arg is setup in out-going arg area.
@@ -980,7 +966,7 @@ void CodeGen::genPutArgStk(GenTreePutArgStk* treeNode)
             }
 
             // If we have an HFA we can't have any GC pointers,
-            // if not then the max size for the the struct is 16 bytes
+            // if not then the max size for the struct is 16 bytes
             if (isHfa)
             {
                 noway_assert(!layout->HasGCPtr());
@@ -1134,9 +1120,9 @@ void CodeGen::genPutArgStk(GenTreePutArgStk* treeNode)
                         type = TYP_UINT;
                     }
                 }
-                const emitAttr attr     = emitTypeSize(type);
+
+                const emitAttr attr     = emitActualTypeSize(type);
                 const unsigned moveSize = genTypeSize(type);
-                assert(EA_SIZE_IN_BYTES(attr) == moveSize);
 
                 remainingSize -= moveSize;
 
@@ -1310,18 +1296,12 @@ void CodeGen::genPutArgSplit(GenTreePutArgSplit* treeNode)
         if (varNode != nullptr)
         {
             assert(varNode->isContained());
-            srcVarNum = varNode->GetLclNum();
-
-            // handle promote situation
+            srcVarNum         = varNode->GetLclNum();
             LclVarDsc* varDsc = compiler->lvaGetDesc(srcVarNum);
 
-            // This struct also must live in the stack frame
-            // And it can't live in a register (SIMD)
-            assert(varDsc->lvType == TYP_STRUCT);
+            // This struct also must live in the stack frame.
+            // And it can't live in a register.
             assert(varDsc->lvOnFrame && !varDsc->lvRegister);
-
-            // We don't split HFA struct
-            assert(!varDsc->lvIsHfa());
         }
         else // addrNode is used
         {
@@ -1810,7 +1790,7 @@ void CodeGen::genCodeForIndexAddr(GenTreeIndexAddr* node)
     const regNumber tmpReg = node->GetSingleTempReg();
 
     // Generate the bounds check if necessary.
-    if ((node->gtFlags & GTF_INX_RNGCHK) != 0)
+    if (node->IsBoundsChecked())
     {
         GetEmitter()->emitIns_R_R_I(INS_ldr, EA_4BYTE, tmpReg, base->GetRegNum(), node->gtLenOffset);
         GetEmitter()->emitIns_R_R(INS_cmp, emitActualTypeSize(index->TypeGet()), index->GetRegNum(), tmpReg);
@@ -2637,18 +2617,16 @@ void CodeGen::genCodeForInitBlkUnroll(GenTreeBlk* node)
         srcReg = REG_ZR;
     }
 
-    regNumber dstReg                     = dstAddrBaseReg;
-    int       dstRegAddrAlignment        = 0;
-    bool      isDstRegAddrAlignmentKnown = false;
+    regNumber dstReg              = dstAddrBaseReg;
+    int       dstRegAddrAlignment = 0;
 
     if (dstLclNum != BAD_VAR_NUM)
     {
         bool      fpBased;
         const int baseAddr = compiler->lvaFrameAddress(dstLclNum, &fpBased);
 
-        dstReg                     = fpBased ? REG_FPBASE : REG_SPBASE;
-        dstRegAddrAlignment        = fpBased ? (genSPtoFPdelta() % 16) : 0;
-        isDstRegAddrAlignmentKnown = true;
+        dstReg              = fpBased ? REG_FPBASE : REG_SPBASE;
+        dstRegAddrAlignment = fpBased ? (genSPtoFPdelta() % 16) : 0;
 
         helper.SetDstOffset(baseAddr + dstOffset);
     }
@@ -2670,11 +2648,7 @@ void CodeGen::genCodeForInitBlkUnroll(GenTreeBlk* node)
 
     bool shouldUse16ByteWideInstrs = false;
 
-    // Store operations that cross a 16-byte boundary reduce bandwidth or incur additional latency.
-    // The following condition prevents using 16-byte stores when dstRegAddrAlignment is:
-    //   1) unknown (i.e. dstReg is neither FP nor SP) or
-    //   2) non-zero (i.e. dstRegAddr is not 16-byte aligned).
-    const bool hasAvailableSimdReg = isDstRegAddrAlignmentKnown && (size > FP_REGSIZE_BYTES);
+    const bool hasAvailableSimdReg = (size > FP_REGSIZE_BYTES);
     const bool canUse16ByteWideInstrs =
         hasAvailableSimdReg && (dstRegAddrAlignment == 0) && helper.CanEncodeAllOffsets(FP_REGSIZE_BYTES);
 
@@ -2825,35 +2799,26 @@ void CodeGen::genCodeForCpBlkUnroll(GenTreeBlk* node)
 
 #ifdef TARGET_ARM64
     CopyBlockUnrollHelper helper(srcOffset, dstOffset, size);
-
-    regNumber srcReg                     = srcAddrBaseReg;
-    int       srcRegAddrAlignment        = 0;
-    bool      isSrcRegAddrAlignmentKnown = false;
+    regNumber             srcReg = srcAddrBaseReg;
 
     if (srcLclNum != BAD_VAR_NUM)
     {
         bool      fpBased;
         const int baseAddr = compiler->lvaFrameAddress(srcLclNum, &fpBased);
 
-        srcReg                     = fpBased ? REG_FPBASE : REG_SPBASE;
-        srcRegAddrAlignment        = fpBased ? (genSPtoFPdelta() % 16) : 0;
-        isSrcRegAddrAlignmentKnown = true;
+        srcReg = fpBased ? REG_FPBASE : REG_SPBASE;
 
         helper.SetSrcOffset(baseAddr + srcOffset);
     }
 
-    regNumber dstReg                     = dstAddrBaseReg;
-    int       dstRegAddrAlignment        = 0;
-    bool      isDstRegAddrAlignmentKnown = false;
+    regNumber dstReg = dstAddrBaseReg;
 
     if (dstLclNum != BAD_VAR_NUM)
     {
         bool      fpBased;
         const int baseAddr = compiler->lvaFrameAddress(dstLclNum, &fpBased);
 
-        dstReg                     = fpBased ? REG_FPBASE : REG_SPBASE;
-        dstRegAddrAlignment        = fpBased ? (genSPtoFPdelta() % 16) : 0;
-        isDstRegAddrAlignmentKnown = true;
+        dstReg = fpBased ? REG_FPBASE : REG_SPBASE;
 
         helper.SetDstOffset(baseAddr + dstOffset);
     }
@@ -2914,8 +2879,7 @@ void CodeGen::genCodeForCpBlkUnroll(GenTreeBlk* node)
     // known and the block size is larger than a single SIMD register size (i.e. when using SIMD instructions can
     // be profitable).
 
-    const bool canUse16ByteWideInstrs = isSrcRegAddrAlignmentKnown && isDstRegAddrAlignmentKnown &&
-                                        (size >= 2 * FP_REGSIZE_BYTES) && (srcRegAddrAlignment == dstRegAddrAlignment);
+    const bool canUse16ByteWideInstrs = (size >= 2 * FP_REGSIZE_BYTES);
 
     bool shouldUse16ByteWideInstrs = false;
 
@@ -4707,7 +4671,7 @@ void CodeGen::genPushCalleeSavedRegisters()
     //      |-----------------------|
     //      |Callee saved registers | // not including FP/LR; multiple of 8 bytes
     //      |-----------------------|
-    //      |        PSP slot       | // 8 bytes (omitted in CoreRT ABI)
+    //      |        PSP slot       | // 8 bytes (omitted in NativeAOT ABI)
     //      |-----------------------|
     //      | locals, temps, etc.   |
     //      |-----------------------|
@@ -4738,7 +4702,7 @@ void CodeGen::genPushCalleeSavedRegisters()
     //      |-----------------------|
     //      |Callee saved registers | // not including FP/LR; multiple of 8 bytes
     //      |-----------------------|
-    //      |        PSP slot       | // 8 bytes (omitted in CoreRT ABI)
+    //      |        PSP slot       | // 8 bytes (omitted in NativeAOT ABI)
     //      |-----------------------|
     //      | locals, temps, etc.   |
     //      |-----------------------|
@@ -5499,13 +5463,6 @@ unsigned CodeGenInterface::InferStructOpSizeAlign(GenTree* op, unsigned* alignme
     {
         opSize    = TARGET_POINTER_SIZE * 2;
         alignment = TARGET_POINTER_SIZE;
-    }
-    else if (op->IsArgPlaceHolderNode())
-    {
-        CORINFO_CLASS_HANDLE clsHnd = op->AsArgPlace()->gtArgPlaceClsHnd;
-        assert(clsHnd != 0);
-        opSize    = roundUp(compiler->info.compCompHnd->getClassSize(clsHnd), TARGET_POINTER_SIZE);
-        alignment = roundUp(compiler->info.compCompHnd->getClassAlignmentRequirement(clsHnd), TARGET_POINTER_SIZE);
     }
     else
     {
