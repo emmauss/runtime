@@ -74,7 +74,7 @@ namespace System.Web
                     }
                 }
 
-                return sb.ToString(0, sb.Length - 1);
+                return sb.Length > 0 ? sb.ToString(0, sb.Length - 1) : "";
             }
         }
 
@@ -87,7 +87,7 @@ namespace System.Web
 
             HttpQSCollection result = new HttpQSCollection();
             int queryLength = query.Length;
-            int namePos = queryLength > 0 && query[0] == '?' ? 1 : 0;
+            int namePos = query.StartsWith('?') ? 1 : 0;
             if (queryLength == namePos)
             {
                 return result;

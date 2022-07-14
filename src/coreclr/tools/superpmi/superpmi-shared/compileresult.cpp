@@ -915,7 +915,7 @@ void CompileResult::applyRelocs(RelocContext* rc, unsigned char* block1, ULONG b
                         // add that to the MC, not just the CompileResult), and we don't have any control over
                         // where the JIT buffer is allocated. To handle this, if the getRelocTypeHint() was
                         // called on the target address, and the VM returned IMAGE_REL_BASED_REL32, then simply
-                        // use the low-order 32 bits of the target address. This is unique enough for for assembly
+                        // use the low-order 32 bits of the target address. This is unique enough for assembly
                         // diffs, because the delta will compare identically and won't be dependent on where
                         // SuperPMI allocated the JIT memory.
 
@@ -1051,9 +1051,18 @@ void CompileResult::applyRelocs(RelocContext* rc, unsigned char* block1, ULONG b
                     }
                 }
 
-                if (delta != (INT64)(int)delta)
+                if (IsSpmiTarget32Bit())
                 {
-                    LogError("REL32 relocation overflows field! delta=0x%016llX", delta);
+                    // Only 32 bits matters. And we don't care about sign. Note that SuperPMI will sometimes return
+                    // arbitrary values, such as 0xCAFE0003 from MethodContext::repGetHelperFtn().
+                    delta &= 0xFFFFFFFF;
+                }
+                else
+                {
+                    if (delta != (INT64)(int)delta)
+                    {
+                        LogError("REL32 relocation overflows field! delta=0x%016llX", delta);
+                    }
                 }
 
                 if ((targetArch == SPMI_TARGET_ARCHITECTURE_AMD64) && !deltaIsFinal)
@@ -1227,7 +1236,7 @@ void CompileResult::dmpRecordCallSiteWithoutSignature(DWORD key, DWORDLONG metho
 
 void CompileResult::repRecordCallSite(ULONG instrOffset, CORINFO_SIG_INFO* callSig, CORINFO_METHOD_HANDLE methodHandle)
 {
-    
+
     if (RecordCallSiteWithSignature == nullptr)
     {
         // The most call site records have only `methodHandle`, so creating two separate maps give us better perfomance
@@ -1273,7 +1282,7 @@ bool CompileResult::fndRecordCallSiteSigInfo(ULONG instrOffset, CORINFO_SIG_INFO
 
 bool CompileResult::fndRecordCallSiteMethodHandle(ULONG instrOffset, CORINFO_METHOD_HANDLE* pMethodHandle)
 {
-    
+
     if (RecordCallSiteWithSignature != nullptr && RecordCallSiteWithSignature->GetIndex(instrOffset) != -1)
     {
         Agnostic_RecordCallSite value = RecordCallSiteWithSignature->Get(instrOffset);

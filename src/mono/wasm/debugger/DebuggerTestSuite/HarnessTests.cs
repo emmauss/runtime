@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.WebAssembly.Diagnostics;
 using Newtonsoft.Json.Linq;
 using Xunit;
+using Xunit.Abstractions;
 
 #nullable enable
 
@@ -13,6 +14,9 @@ namespace DebuggerTests
 {
     public class HarnessTests : DebuggerTests
     {
+        public HarnessTests(ITestOutputHelper testOutput) : base(testOutput)
+        {}
+
         [ConditionalFact(nameof(RunningOnChrome))]
         public async Task TimedOutWaitingForInvalidBreakpoint()
         {
@@ -45,8 +49,8 @@ namespace DebuggerTests
                 if (t != clientRunLoopStopped.Task)
                     Assert.Fail($"Proxy did not stop, as expected");
                 RunLoopExitState? state = await clientRunLoopStopped.Task;
-                if (state.reason != RunLoopStopReason.ProxyConnectionClosed)
-                    Assert.Fail($"Client runloop did not stop with ProxyConnectionClosed. state: {state}.{Environment.NewLine}SendCommand had failed with {ex}");
+                if (state.reason != RunLoopStopReason.ConnectionClosed)
+                    Assert.Fail($"Client runloop did not stop with ConnectionClosed. state: {state}.{Environment.NewLine}SendCommand had failed with {ex}");
             }
         }
 

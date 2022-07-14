@@ -597,6 +597,12 @@
   <data name="Cryptography_UnsupportedPaddingMode" xml:space="preserve">
     <value>The specified PaddingMode is not supported.</value>
   </data>
+  <data name="Cryptography_X509_AIA_MustNotBuildEmpty" xml:space="preserve">
+    <value>At least one of the ocspUris or caIssuersUris values must be non-empty.</value>
+  </data>
+  <data name="Cryptography_X509_AIA_NullValue" xml:space="preserve">
+    <value>One of the ocspUris or caIssuersUris enumerables contains a null value.</value>
+  </data>
   <data name="Cryptography_X509_CertificateCorrupted" xml:space="preserve">
     <value>Certificate '{0}' is corrupted.</value>
   </data>
@@ -746,5 +752,11 @@
   </data>
   <data name="Unknown_Error" xml:space="preserve">
     <value>Unknown error.</value>
+  </data>
+  <data name="Unknown_SubtleCrypto_Error" xml:space="preserve">
+    <value>SubtleCrypto returned an unknown error: '{0}'.</value>
+  </data>
+  <data name="PlatformNotSupported_CipherModeBrowser" xml:space="preserve">
+    <value>Only CipherMode.CBC is supported on this platform.</value>
   </data>
 </root>

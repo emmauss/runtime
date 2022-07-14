@@ -33,7 +33,7 @@ typedef DPTR(InteropLib::ABI::ManagedObjectWrapperLayout) PTR_ManagedObjectWrapp
 #include <msodw.h>
 #endif // TARGET_UNIX
 
-// To include definiton of IsThrowableThreadAbortException
+// To include definition of IsThrowableThreadAbortException
 #include <exstatecommon.h>
 
 #include "rejit.h"
@@ -348,20 +348,9 @@ ClrDataAccess::GetThreadpoolData(struct DacpThreadpoolData *threadpoolData)
     threadpoolData->MaxLimitTotalCPThreads = ThreadpoolMgr::MaxLimitTotalCPThreads;
     threadpoolData->CurrentLimitTotalCPThreads = (LONG)(counts.NumActive); //legacy: currently has no meaning
     threadpoolData->MinLimitTotalCPThreads = ThreadpoolMgr::MinLimitTotalCPThreads;
-
-    TADDR pEntry = DacGetTargetAddrForHostAddr(&ThreadpoolMgr::TimerQueue,true);
-    ThreadpoolMgr::LIST_ENTRY entry;
-    DacReadAll(pEntry,&entry,sizeof(ThreadpoolMgr::LIST_ENTRY),true);
-    TADDR node = (TADDR) entry.Flink;
     threadpoolData->NumTimers = 0;
-    while (node && node != pEntry)
-    {
-        threadpoolData->NumTimers++;
-        DacReadAll(node,&entry,sizeof(ThreadpoolMgr::LIST_ENTRY),true);
-        node = (TADDR) entry.Flink;
-    }
+    threadpoolData->AsyncTimerCallbackCompletionFPtr = NULL;
 
-    threadpoolData->AsyncTimerCallbackCompletionFPtr = (CLRDATA_ADDRESS) GFN_TADDR(ThreadpoolMgr__AsyncTimerCallbackCompletion);
     SOSDacLeave();
     return hr;
 }
@@ -646,15 +635,39 @@ ClrDataAccess::GetRegisterName(int regNum, unsigned int count, _Inout_updates_z_
     if ((unsigned int)regNum >= ARRAY_SIZE(regs))
         return E_UNEXPECTED;
 
-
-    const WCHAR caller[] = W("caller.");
-    unsigned int needed = (callerFrame?(unsigned int)wcslen(caller):0) + (unsigned int)wcslen(regs[regNum]) + 1;
+    const WCHAR callerPrefix[] = W("caller.");
+    // Include null terminator in prefixLen/regLen because wcscpy_s will fail otherwise
+    unsigned int prefixLen = (unsigned int)ARRAY_SIZE(callerPrefix);
+    unsigned int regLen = (unsigned int)wcslen(regs[regNum]) + 1;
+    unsigned int needed = (callerFrame ? prefixLen - 1 : 0) + regLen;
     if (pNeeded)
         *pNeeded = needed;
 
     if (buffer)
     {
-        _snwprintf_s(buffer, count, _TRUNCATE, W("%s%s"), callerFrame ? caller : W(""), regs[regNum]);
+        WCHAR* curr = buffer;
+        WCHAR* end = buffer + count;
+        unsigned int destSize = count;
+        if (curr < end && callerFrame)
+        {
+            unsigned int toCopy = prefixLen < destSize ? prefixLen : destSize;
+            wcscpy_s(curr, toCopy, callerPrefix);
+            // Point to null terminator
+            toCopy--;
+            curr += toCopy;
+            destSize -= toCopy;
+        }
+
+        if (curr < end)
+        {
+            unsigned int toCopy = regLen < destSize ? regLen : destSize;
+            wcscpy_s(curr, toCopy, regs[regNum]);
+            // Point to null terminator
+            toCopy--;
+            curr += toCopy;
+            destSize -= toCopy;
+        }
+
         if (count < needed)
             return S_FALSE;
     }
@@ -1682,7 +1695,7 @@ ClrDataAccess::GetModuleData(CLRDATA_ADDRESS addr, struct DacpModuleData *Module
         ModuleData->TypeRefToMethodTableMap = PTR_CDADDR(pModule->m_TypeRefToMethodTableMap.pTable);
         ModuleData->MethodDefToDescMap = PTR_CDADDR(pModule->m_MethodDefToDescMap.pTable);
         ModuleData->FieldDefToDescMap = PTR_CDADDR(pModule->m_FieldDefToDescMap.pTable);
-        ModuleData->MemberRefToDescMap = NULL;
+        ModuleData->MemberRefToDescMap = PTR_CDADDR(pModule->m_MemberRefMap.pTable);
         ModuleData->FileReferencesMap = PTR_CDADDR(pModule->m_FileReferencesMap.pTable);
         ModuleData->ManifestModuleReferencesMap = PTR_CDADDR(pModule->m_ManifestModuleReferencesMap.pTable);
 
@@ -2836,6 +2849,15 @@ ClrDataAccess::GetHeapSegmentData(CLRDATA_ADDRESS seg, struct DacpHeapSegmentDat
             heapSegment->flags = pSegment->flags;
             heapSegment->gc_heap = NULL;
             heapSegment->background_allocated = (CLRDATA_ADDRESS)(ULONG_PTR)pSegment->background_allocated;
+
+            if (seg == (CLRDATA_ADDRESS)*g_gcDacGlobals->ephemeral_heap_segment)
+            {
+                heapSegment->highAllocMark = (CLRDATA_ADDRESS)*g_gcDacGlobals->alloc_allocated;
+            }
+            else
+            {
+                heapSegment->highAllocMark = heapSegment->allocated;
+            }
         }
     }
 
