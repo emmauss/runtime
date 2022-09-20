@@ -19,6 +19,9 @@ protected:
     virtual void TrySpecialCases();
     virtual void MorphStructCases();
 
+    void PropagateBlockAssertions();
+    void PropagateExpansionAssertions();
+
     virtual const char* GetHelperName() const
     {
         return "MorphInitBlock";
@@ -70,7 +73,7 @@ protected:
 //    tree - A GT_ASG tree that performs block initialization.
 //
 // Return Value:
-//    A possibly modified tree to perfom the initializetion.
+//    A possibly modified tree to perform the initializetion.
 //
 // static
 GenTree* MorphInitBlockHelper::MorphInitBlock(Compiler* comp, GenTree* tree)
@@ -114,7 +117,7 @@ MorphInitBlockHelper::MorphInitBlockHelper(Compiler* comp, GenTree* asg, bool in
 //    or sets lvDoNotEnregister on locals.
 //
 // Return Value:
-//    A possibly modified tree to perfom the block operation.
+//    A possibly modified tree to perform the block operation.
 //
 // Notes:
 //    It is used for both init and copy block.
@@ -125,7 +128,7 @@ GenTree* MorphInitBlockHelper::Morph()
 
     PrepareDst();
     PrepareSrc();
-
+    PropagateBlockAssertions();
     TrySpecialCases();
 
     if (m_transformationDecision == BlockTransformation::Undefined)
@@ -147,6 +150,8 @@ GenTree* MorphInitBlockHelper::Morph()
             MorphStructCases();
         }
     }
+
+    PropagateExpansionAssertions();
 
     assert(m_transformationDecision != BlockTransformation::Undefined);
     assert(m_result != nullptr);
@@ -273,6 +278,41 @@ void MorphInitBlockHelper::PrepareDst()
         }
     }
 #endif // DEBUG
+}
+
+//------------------------------------------------------------------------
+// PropagateBlockAssertions: propagate assertions based on the original tree
+//
+// Notes:
+//    Once the init or copy tree is morphed, assertion gen can no
+//    longer recognize what it means.
+//
+//    So we generate assertions based on the original tree.
+//
+void MorphInitBlockHelper::PropagateBlockAssertions()
+{
+    if (m_comp->optLocalAssertionProp)
+    {
+        m_comp->optAssertionGen(m_asg);
+    }
+}
+
+//------------------------------------------------------------------------
+// PropagateExpansionAssertions: propagate assertions based on the
+//   expanded tree
+//
+// Notes:
+//    After the copy/init is expanded, we may see additional expansions
+//    to generate.
+//
+void MorphInitBlockHelper::PropagateExpansionAssertions()
+{
+    // Consider doing this for FieldByField as well
+    //
+    if (m_comp->optLocalAssertionProp && (m_transformationDecision == BlockTransformation::OneAsgBlock))
+    {
+        m_comp->optAssertionGen(m_asg);
+    }
 }
 
 //------------------------------------------------------------------------
@@ -561,10 +601,10 @@ void MorphInitBlockHelper::TryInitFieldByField()
             if (varTypeIsSIMD(fieldDesc) || varTypeIsGC(fieldDesc))
             {
                 // Cannot initialize GC or SIMD types with a non-zero constant.
-                // The former is completly bogus. The later restriction could be
+                // The former is completely bogus. The later restriction could be
                 // lifted by supporting non-zero SIMD constants or by generating
                 // field initialization code that converts an integer constant to
-                // the appropiate SIMD value. Unlikely to be very useful, though.
+                // the appropriate SIMD value. Unlikely to be very useful, though.
                 JITDUMP(" dest contains GC and/or SIMD fields and source constant is not 0.\n");
                 return;
             }
@@ -692,7 +732,7 @@ protected:
 //    tree - A GT_ASG tree that performs block copy.
 //
 // Return Value:
-//    A possibly modified tree to perfom the copy.
+//    A possibly modified tree to perform the copy.
 //
 // static
 GenTree* MorphCopyBlockHelper::MorphCopyBlock(Compiler* comp, GenTree* tree)
@@ -795,28 +835,11 @@ void MorphCopyBlockHelper::TrySpecialCases()
 
     if (m_transformationDecision == BlockTransformation::Undefined)
     {
-        if (m_src->IsCall())
+        if (m_src->IsCall() && m_dst->OperIs(GT_LCL_VAR) && m_dstVarDsc->CanBeReplacedWithItsField(m_comp))
         {
-            if (m_dst->OperIs(GT_OBJ))
-            {
-                GenTreeLclVar* lclVar = m_comp->fgMorphTryFoldObjAsLclVar(m_dst->AsObj());
-                if (lclVar != nullptr)
-                {
-                    m_dst        = lclVar;
-                    m_asg->gtOp1 = lclVar;
-                }
-            }
-            if (m_dst->OperIs(GT_LCL_VAR))
-            {
-                LclVarDsc* varDsc = m_comp->lvaGetDesc(m_dst->AsLclVar());
-                if (varTypeIsStruct(varDsc) && varDsc->CanBeReplacedWithItsField(m_comp))
-                {
-                    m_dst->gtFlags |= GTF_DONT_CSE;
-                    JITDUMP("Not morphing a single reg call return\n");
-                    m_transformationDecision = BlockTransformation::SkipCallSrc;
-                    m_result                 = m_asg;
-                }
-            }
+            JITDUMP("Not morphing a single reg call return\n");
+            m_transformationDecision = BlockTransformation::SkipCallSrc;
+            m_result                 = m_asg;
         }
     }
 }
@@ -941,7 +964,7 @@ void MorphCopyBlockHelper::MorphStructCases()
     {
         // It is not always profitable to do field by field init for structs that are allocated to memory.
         // A struct with 8 bool fields will require 8 moves instead of one if we do this transformation.
-        // A simple heuristic when field by field copy is prefered:
+        // A simple heuristic when field by field copy is preferred:
         // - if fields can be enregistered;
         // - if the struct has GCPtrs (block copy would be done via helper that is expensive);
         // - if the struct has only one field.
@@ -1491,7 +1514,7 @@ GenTree* MorphCopyBlockHelper::CopyFieldByField()
 //    if they cannot be enregistered.
 //    When performing a field by field assignment we can have one of Source() or Dest treated as a blob of bytes
 //    and in such cases we will call lvaSetVarDoNotEnregister() on the one treated as a blob of bytes.
-//    If the Source() or Dest() is a struct that has a "CustomLayout" and "ConstainsHoles" then we
+//    If the Source() or Dest() is a struct that has a "CustomLayout" and "ContainsHoles" then we
 //    can not use a field by field assignment and must leave the original block copy unmodified.
 //
 GenTree* Compiler::fgMorphCopyBlock(GenTree* tree)
@@ -1550,13 +1573,17 @@ GenTree* Compiler::fgMorphStoreDynBlock(GenTreeStoreDynBlk* tree)
         if (size != 0)
         {
             GenTree* lhs = gtNewBlockVal(tree->Addr(), static_cast<unsigned>(size));
-            lhs->SetIndirExceptionFlags(this);
-
             GenTree* asg = gtNewAssignNode(lhs, tree->Data());
             asg->gtFlags |= (tree->gtFlags & (GTF_ALL_EFFECT | GTF_BLK_VOLATILE | GTF_BLK_UNALIGNED));
             INDEBUG(asg->gtDebugFlags |= GTF_DEBUG_NODE_MORPHED);
 
-            JITDUMP("MorphStoreDynBlock: trasformed STORE_DYN_BLK into ASG(BLK, Data())\n");
+            JITDUMP("MorphStoreDynBlock: transformed STORE_DYN_BLK into ASG(BLK, Data())\n");
+
+            GenTree* lclVarTree = fgIsIndirOfAddrOfLocal(lhs);
+            if (lclVarTree != nullptr)
+            {
+                lclVarTree->gtFlags |= GTF_VAR_DEF;
+            }
 
             return tree->OperIsCopyBlkOp() ? fgMorphCopyBlock(asg) : fgMorphInitBlock(asg);
         }
