@@ -8,8 +8,12 @@ macro(append_extra_cryptography_libs NativeLibsExtra)
     # We only care about having "enough" OpenSSL to get the native lib built
     # here, and it's on the end user to ship libssl/libcrypto from Google
     if(FORCE_ANDROID_OPENSSL)
-        set(OPENSSL_CRYPTO_LIBRARY /usr/lib/x86_64-linux-gnu/libcrypto.so)
-        set(OPENSSL_SSL_LIBRARY /usr/lib/x86_64-linux-gnu/libssl.so)
+		if(NOT DEFINED OPENSSL_CRYPTO_LIBRARY)
+			set(OPENSSL_CRYPTO_LIBRARY /usr/lib/x86_64-linux-gnu/libcrypto.so)
+		endif()
+		if(NOT DEFINED OPENSSL_SSL_LIBRARY)
+			set(OPENSSL_SSL_LIBRARY /usr/lib/x86_64-linux-gnu/libssl.so)
+		endif()
         # Things get more wrong. We need Desktop OpenSSL headers, but
         # /usr/include is special cased and forbidden. We need to copy
         # the headers to a different location and use them
