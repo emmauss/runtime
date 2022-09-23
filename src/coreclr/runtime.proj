@@ -51,7 +51,7 @@
       <_CoreClrBuildArg Condition="'$(ClrCrossComponentsSubset)' == 'true'" Include="-component crosscomponents" />
     </ItemGroup>
 
-   <ItemGroup Condition="'$(TargetsAndroid)' == 'true'">
+   <ItemGroup Condition="'$(TargetsAndroid)' == 'true' or '$(RuntimeOS)' == 'linux-bionic'">
       <_CoreClrBuildArg Include="-cmakeargs -DCMAKE_TOOLCHAIN_FILE=$(ANDROID_NDK_ROOT)/build/cmake/android.toolchain.cmake"/>
       <_CoreClrBuildArg Include="-cmakeargs -DANDROID_NDK=$(ANDROID_NDK_ROOT)"/>
       <_CoreClrBuildArg Include="-cmakeargs -DANDROID_STL=c++_static"/>
