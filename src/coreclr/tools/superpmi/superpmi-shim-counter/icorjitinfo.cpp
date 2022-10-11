@@ -314,13 +314,14 @@ int interceptor_ICJI::getStringLiteral(
     return original_ICorJitInfo->getStringLiteral(module, metaTOK, buffer, bufferSize);
 }
 
-int interceptor_ICJI::objectToString(
+size_t interceptor_ICJI::printObjectDescription(
           void* handle,
           char* buffer,
-          int bufferSize)
+          size_t bufferSize,
+          size_t* pRequiredBufferSize)
 {
-    mcs->AddCall("objectToString");
-    return original_ICorJitInfo->objectToString(handle, buffer, bufferSize);
+    mcs->AddCall("printObjectDescription");
+    return original_ICorJitInfo->printObjectDescription(handle, buffer, bufferSize, pRequiredBufferSize);
 }
 
 CorInfoType interceptor_ICJI::asCorInfoType(
@@ -549,6 +550,20 @@ void* interceptor_ICJI::getRuntimeTypePointer(
 {
     mcs->AddCall("getRuntimeTypePointer");
     return original_ICorJitInfo->getRuntimeTypePointer(cls);
+}
+
+bool interceptor_ICJI::isObjectImmutable(
+          void* objPtr)
+{
+    mcs->AddCall("isObjectImmutable");
+    return original_ICorJitInfo->isObjectImmutable(objPtr);
+}
+
+CORINFO_CLASS_HANDLE interceptor_ICJI::getObjectType(
+          void* objPtr)
+{
+    mcs->AddCall("getObjectType");
+    return original_ICorJitInfo->getObjectType(objPtr);
 }
 
 bool interceptor_ICJI::getReadyToRunHelper(
@@ -1186,6 +1201,15 @@ void* interceptor_ICJI::getFieldAddress(
 {
     mcs->AddCall("getFieldAddress");
     return original_ICorJitInfo->getFieldAddress(field, ppIndirection);
+}
+
+bool interceptor_ICJI::getReadonlyStaticFieldValue(
+          CORINFO_FIELD_HANDLE field,
+          uint8_t* buffer,
+          int bufferSize)
+{
+    mcs->AddCall("getReadonlyStaticFieldValue");
+    return original_ICorJitInfo->getReadonlyStaticFieldValue(field, buffer, bufferSize);
 }
 
 CORINFO_CLASS_HANDLE interceptor_ICJI::getStaticFieldCurrentClass(

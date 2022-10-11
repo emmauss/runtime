@@ -78,7 +78,7 @@ struct InfoHdr;              // defined in GCInfo.h
 struct escapeMapping_t;      // defined in fgdiagnostic.cpp
 class emitter;               // defined in emit.h
 struct ShadowParamVarInfo;   // defined in GSChecks.cpp
-struct InitVarDscInfo;       // defined in register_arg_convention.h
+struct InitVarDscInfo;       // defined in registerargconvention.h
 class FgStack;               // defined in fgbasic.cpp
 class Instrumentor;          // defined in fgprofile.cpp
 class SpanningTreeVisitor;   // defined in fgprofile.cpp
@@ -1268,6 +1268,7 @@ public:
     static IntegralRange ForNode(GenTree* node, Compiler* compiler);
     static IntegralRange ForCastInput(GenTreeCast* cast);
     static IntegralRange ForCastOutput(GenTreeCast* cast);
+    static IntegralRange Union(IntegralRange range1, IntegralRange range2);
 
 #ifdef DEBUG
     static void Print(IntegralRange range);
@@ -1390,14 +1391,14 @@ LinearScanInterface* getLinearScanAllocator(Compiler* comp);
 // partition a compilation.
 enum Phases
 {
-#define CompPhaseNameMacro(enum_nm, string_nm, short_nm, hasChildren, parent, measureIR) enum_nm,
+#define CompPhaseNameMacro(enum_nm, string_nm, hasChildren, parent, measureIR) enum_nm,
 #include "compphases.h"
     PHASE_NUMBER_OF
 };
 
 extern const char*   PhaseNames[];
 extern const char*   PhaseEnums[];
-extern const LPCWSTR PhaseShortNames[];
+extern const LPCWSTR PhaseEnumsW[];
 
 // Specify which checks should be run after each phase
 //
@@ -1872,10 +1873,8 @@ public:
     DWORD expensiveDebugCheckLevel;
 #endif
 
-#if FEATURE_MULTIREG_RET
     GenTree* impAssignMultiRegTypeToVar(GenTree*             op,
                                         CORINFO_CLASS_HANDLE hClass DEBUGARG(CorInfoCallConvExtension callConv));
-#endif // FEATURE_MULTIREG_RET
 
 #ifdef TARGET_X86
     bool isTrivialPointerSizedStruct(CORINFO_CLASS_HANDLE clsHnd) const;
@@ -2295,13 +2294,11 @@ public:
 
     GenTree* gtNewSconNode(int CPX, CORINFO_MODULE_HANDLE scpHandle);
 
-    GenTreeVecCon* gtNewVconNode(var_types type, CorInfoType simdBaseJitType);
+    GenTreeVecCon* gtNewVconNode(var_types type);
 
     GenTree* gtNewAllBitsSetConNode(var_types type);
-    GenTree* gtNewAllBitsSetConNode(var_types type, CorInfoType simdBaseJitType);
 
     GenTree* gtNewZeroConNode(var_types type);
-    GenTree* gtNewZeroConNode(var_types type, CorInfoType simdBaseJitType);
 
     GenTree* gtNewOneConNode(var_types type);
 
@@ -2818,8 +2815,6 @@ public:
     CORINFO_CLASS_HANDLE gtGetHelperArgClassHandle(GenTree* array);
     // Get the class handle for a field
     CORINFO_CLASS_HANDLE gtGetFieldClassHandle(CORINFO_FIELD_HANDLE fieldHnd, bool* pIsExact, bool* pIsNonNull);
-    // Check if this tree is a gc static base helper call
-    bool gtIsStaticGCBaseHelperCall(GenTree* tree);
 
     GenTree* gtCallGetDefinedRetBufLclAddr(GenTreeCall* call);
 
@@ -3624,15 +3619,11 @@ protected:
                             CORINFO_CALL_INFO* callInfo,
                             IL_OFFSET          rawILOffset);
 
-    CORINFO_CLASS_HANDLE impGetSpecialIntrinsicExactReturnType(CORINFO_METHOD_HANDLE specialIntrinsicHandle);
-
-    bool impMethodInfo_hasRetBuffArg(CORINFO_METHOD_INFO* methInfo, CorInfoCallConvExtension callConv);
+    CORINFO_CLASS_HANDLE impGetSpecialIntrinsicExactReturnType(GenTreeCall* call);
 
     GenTree* impFixupCallStructReturn(GenTreeCall* call, CORINFO_CLASS_HANDLE retClsHnd);
 
-    GenTree* impFixupStructReturnType(GenTree*                 op,
-                                      CORINFO_CLASS_HANDLE     retClsHnd,
-                                      CorInfoCallConvExtension unmgdCallConv);
+    GenTree* impFixupStructReturnType(GenTree* op);
 
 #ifdef DEBUG
     var_types impImportJitTestLabelMark(int numArgs);
@@ -3640,7 +3631,7 @@ protected:
 
     GenTree* impInitClass(CORINFO_RESOLVED_TOKEN* pResolvedToken);
 
-    GenTree* impImportStaticReadOnlyField(void* fldAddr, var_types lclTyp);
+    GenTree* impImportStaticReadOnlyField(uint8_t* buffer, int bufferSize, var_types valueType);
 
     GenTree* impImportStaticFieldAccess(CORINFO_RESOLVED_TOKEN* pResolvedToken,
                                         CORINFO_ACCESS_FLAGS    access,
@@ -6968,7 +6959,9 @@ public:
     PhaseStatus optRedundantBranches();
     bool optRedundantRelop(BasicBlock* const block);
     bool optRedundantBranch(BasicBlock* const block);
-    bool optJumpThread(BasicBlock* const block, BasicBlock* const domBlock, bool domIsSameRelop);
+    bool optJumpThreadDom(BasicBlock* const block, BasicBlock* const domBlock, bool domIsSameRelop);
+    bool optJumpThreadPhi(BasicBlock* const block, GenTree* tree, ValueNum treeNormVN);
+    bool optJumpThreadCheck(BasicBlock* const block, BasicBlock* const domBlock);
     bool optJumpThreadCore(JumpThreadInfo& jti);
     bool optReachable(BasicBlock* const fromBlock, BasicBlock* const toBlock, BasicBlock* const excludedBlock);
     BitVecTraits* optReachableBitVecTraits;
@@ -7800,7 +7793,7 @@ public:
     const char* eeGetFieldName(CORINFO_FIELD_HANDLE fieldHnd, const char** classNamePtr = nullptr);
 
 #if defined(DEBUG)
-    void eePrintFrozenObjectDescription(const char* prefix, size_t handle);
+    void eePrintObjectDescriptionDescription(const char* prefix, size_t handle);
     unsigned eeTryGetClassSize(CORINFO_CLASS_HANDLE clsHnd);
     const char16_t* eeGetShortClassName(CORINFO_CLASS_HANDLE clsHnd);
 #endif
@@ -8312,6 +8305,10 @@ private:
 #endif // defined(TARGET_XARCH)
 #endif // FEATURE_HW_INTRINSICS
 
+        CORINFO_CLASS_HANDLE CanonicalSimd8Handle;
+        CORINFO_CLASS_HANDLE CanonicalSimd16Handle;
+        CORINFO_CLASS_HANDLE CanonicalSimd32Handle;
+
         SIMDHandlesCache()
         {
             memset(this, 0, sizeof(*this));
@@ -8404,6 +8401,44 @@ private:
     }
 #endif // FEATURE_HW_INTRINSICS
 
+    //------------------------------------------------------------------------
+    // gtGetCanonicalStructHandleForSIMD: Get the "canonical" SIMD type handle.
+    //
+    // Some SIMD-typed trees do not carry struct handles with them (and in
+    // some cases, they cannot, due to being created by the compiler itself).
+    // To enable CSEing of these trees, we use "canonical" handles. These are
+    // captured during importation, and can represent any type normalized to
+    // be TYP_SIMD.
+    //
+    // Arguments:
+    //    simdType - The SIMD type
+    //
+    // Return Value:
+    //    The "canonical" type handle for "simdType", if one was available.
+    //    "NO_CLASS_HANDLE" otherwise.
+    //
+    CORINFO_CLASS_HANDLE gtGetCanonicalStructHandleForSIMD(var_types simdType)
+    {
+        if (m_simdHandleCache == nullptr)
+        {
+            return NO_CLASS_HANDLE;
+        }
+
+        switch (simdType)
+        {
+            case TYP_SIMD8:
+                return m_simdHandleCache->CanonicalSimd8Handle;
+            case TYP_SIMD12:
+                return m_simdHandleCache->SIMDVector3Handle;
+            case TYP_SIMD16:
+                return m_simdHandleCache->CanonicalSimd16Handle;
+            case TYP_SIMD32:
+                return m_simdHandleCache->CanonicalSimd32Handle;
+            default:
+                unreached();
+        }
+    }
+
     // Returns true if this is a SIMD type that should be considered an opaque
     // vector type (i.e. do not analyze or promote its fields).
     // Note that all but the fixed vector types are opaque, even though they may
@@ -8450,13 +8485,18 @@ private:
         return CORINFO_TYPE_UNDEF;
     }
 
+    bool isNumericsNamespace(const char* ns)
+    {
+        return strcmp(ns, "System.Numerics") == 0;
+    }
+
     bool isSIMDClass(CORINFO_CLASS_HANDLE clsHnd)
     {
         if (isIntrinsicType(clsHnd))
         {
             const char* namespaceName = nullptr;
             (void)getClassNameFromMetadata(clsHnd, &namespaceName);
-            return strcmp(namespaceName, "System.Numerics") == 0;
+            return isNumericsNamespace(namespaceName);
         }
         return false;
     }
@@ -8779,12 +8819,6 @@ private:
     bool lclVarIsSIMDType(unsigned varNum)
     {
         return lvaGetDesc(varNum)->lvIsSIMDType();
-    }
-
-    // Is this Local node a SIMD local?
-    bool lclVarIsSIMDType(GenTreeLclVarCommon* lclVarTree)
-    {
-        return lclVarIsSIMDType(lclVarTree->GetLclNum());
     }
 
     // Returns true if the TYP_SIMD locals on stack are aligned at their
@@ -9262,6 +9296,9 @@ public:
 // likely complicated enough that loop alignment will not impact performance.
 #define DEFAULT_MAX_LOOPSIZE_FOR_ALIGN DEFAULT_ALIGN_LOOP_BOUNDARY * 3
 
+// By default only single iteration loops will be unrolled
+#define DEFAULT_UNROLL_LOOP_MAX_ITERATION_COUNT 1
+
 #ifdef DEBUG
         // Loop alignment variables
 
@@ -9289,6 +9326,9 @@ public:
 
         // If set, tracks the hidden return buffer for struct arg.
         bool compJitOptimizeStructHiddenBuffer;
+
+        // Iteration limit to unroll a loop.
+        unsigned short compJitUnrollLoopMaxIterationCount;
 
 #ifdef LATE_DISASM
         bool doLateDisasm; // Run the late disassembler
@@ -9597,7 +9637,7 @@ public:
         bool compPublishStubParam : 1;   // EAX captured in prolog will be available through an intrinsic
         bool compHasNextCallRetAddr : 1; // The NextCallReturnAddress intrinsic is used.
 
-        var_types compRetType;       // Return type of the method as declared in IL
+        var_types compRetType;       // Return type of the method as declared in IL (including SIMD normalization)
         var_types compRetNativeType; // Normalized return type as per target arch ABI
         unsigned  compILargsCount;   // Number of arguments (incl. implicit but not hidden)
         unsigned  compArgsCount;     // Number of arguments (incl. implicit and     hidden)
@@ -9664,19 +9704,23 @@ public:
 
     } info;
 
-    // Returns true if the method being compiled returns a non-void and non-struct value.
-    // Note that lvaInitTypeRef() normalizes compRetNativeType for struct returns in a
-    // single register as per target arch ABI (e.g on Amd64 Windows structs of size 1, 2,
-    // 4 or 8 gets normalized to TYP_BYTE/TYP_SHORT/TYP_INT/TYP_LONG; On Arm HFA structs).
-    // Methods returning such structs are considered to return non-struct return value and
-    // this method returns true in that case.
-    bool compMethodReturnsNativeScalarType()
+    ReturnTypeDesc compRetTypeDesc; // ABI return type descriptor for the method
+
+    //------------------------------------------------------------------------
+    // compMethodHasRetVal: Does this method return some kind of value?
+    //
+    // Return Value:
+    //    If this method returns a struct via a return buffer, whether that
+    //    buffer's address needs to be returned, otherwise whether signature
+    //    return type is not "TYP_VOID".
+    //
+    bool compMethodHasRetVal() const
     {
-        return (info.compRetType != TYP_VOID) && !varTypeIsStruct(info.compRetNativeType);
+        return (info.compRetBuffArg != BAD_VAR_NUM) ? compMethodReturnsRetBufAddr() : (info.compRetType != TYP_VOID);
     }
 
     // Returns true if the method being compiled returns RetBuf addr as its return value
-    bool compMethodReturnsRetBufAddr()
+    bool compMethodReturnsRetBufAddr() const
     {
         // There are cases where implicit RetBuf argument should be explicitly returned in a register.
         // In such cases the return type is changed to TYP_BYREF and appropriate IR is generated.
@@ -9724,29 +9768,16 @@ public:
 #endif // TARGET_AMD64
     }
 
-    // Returns true if the method returns a value in more than one return register
-    // TODO-ARM-Bug: Deal with multi-register genReturnLocal structs?
-    // TODO-ARM64: Does this apply for ARM64 too?
-    bool compMethodReturnsMultiRegRetType()
+    //------------------------------------------------------------------------
+    // compMethodReturnsMultiRegRetType: Does this method return a multi-reg value?
+    //
+    // Return Value:
+    //    If this method returns a value in multiple registers, "true", "false"
+    //    otherwise.
+    //
+    bool compMethodReturnsMultiRegRetType() const
     {
-#if FEATURE_MULTIREG_RET
-#if defined(TARGET_X86)
-        // On x86, 64-bit longs and structs are returned in multiple registers
-        return varTypeIsLong(info.compRetNativeType) ||
-               (varTypeIsStruct(info.compRetNativeType) && (info.compRetBuffArg == BAD_VAR_NUM));
-#else  // targets: X64-UNIX, ARM64 or ARM32
-        // On all other targets that support multireg return values:
-        // Methods returning a struct in multiple registers have a return value of TYP_STRUCT.
-        // Such method's compRetNativeType is TYP_STRUCT without a hidden RetBufArg
-        return varTypeIsStruct(info.compRetNativeType) && (info.compRetBuffArg == BAD_VAR_NUM);
-#endif // TARGET_XXX
-
-#else // not FEATURE_MULTIREG_RET
-
-        // For this architecture there are no multireg returns
-        return false;
-
-#endif // FEATURE_MULTIREG_RET
+        return compRetTypeDesc.IsMultiRegRetType();
     }
 
     bool compEnregLocals()
@@ -9762,46 +9793,6 @@ public:
     bool compObjectStackAllocation()
     {
         return (JitConfig.JitObjectStackAllocation() != 0);
-    }
-
-    // Returns true if the method returns a value in more than one return register,
-    // it should replace/be  merged with compMethodReturnsMultiRegRetType when #36868 is fixed.
-    // The difference from original `compMethodReturnsMultiRegRetType` is in ARM64 SIMD* handling,
-    // this method correctly returns false for it (it is passed as HVA), when the original returns true.
-    bool compMethodReturnsMultiRegRegTypeAlternate()
-    {
-#if FEATURE_MULTIREG_RET
-#if defined(TARGET_X86)
-        // On x86, 64-bit longs and structs are returned in multiple registers
-        return varTypeIsLong(info.compRetNativeType) ||
-               (varTypeIsStruct(info.compRetNativeType) && (info.compRetBuffArg == BAD_VAR_NUM));
-#else // targets: X64-UNIX, ARM64 or ARM32
-#if defined(TARGET_ARM64)
-        // TYP_SIMD* are returned in one register.
-        if (varTypeIsSIMD(info.compRetNativeType))
-        {
-            return false;
-        }
-#endif
-        // On all other targets that support multireg return values:
-        // Methods returning a struct in multiple registers have a return value of TYP_STRUCT.
-        // Such method's compRetNativeType is TYP_STRUCT without a hidden RetBufArg
-        return varTypeIsStruct(info.compRetNativeType) && (info.compRetBuffArg == BAD_VAR_NUM);
-#endif // TARGET_XXX
-
-#else // not FEATURE_MULTIREG_RET
-
-        // For this architecture there are no multireg returns
-        return false;
-
-#endif // FEATURE_MULTIREG_RET
-    }
-
-    // Returns true if the method being compiled returns a value
-    bool compMethodHasRetVal()
-    {
-        return compMethodReturnsNativeScalarType() || compMethodReturnsRetBufAddr() ||
-               compMethodReturnsMultiRegRetType();
     }
 
     // Returns true if the method requires a PInvoke prolog and epilog
@@ -10149,7 +10140,7 @@ public:
     void compDispScopeLists();
 #endif // DEBUG
 
-    bool compIsProfilerHookNeeded();
+    bool compIsProfilerHookNeeded() const;
 
     //-------------------------------------------------------------------------
     /*               Statistical Data Gathering                               */
@@ -11240,6 +11231,8 @@ class StringPrinter
     size_t        m_bufferMax;
     size_t        m_bufferIndex = 0;
 
+    void Grow(size_t newSize);
+
 public:
     StringPrinter(CompAllocator alloc, char* buffer = nullptr, size_t bufferMax = 0)
         : m_alloc(alloc), m_buffer(buffer), m_bufferMax(bufferMax)
@@ -11270,7 +11263,8 @@ public:
         m_buffer[m_bufferIndex] = '\0';
     }
 
-    void Printf(const char* format, ...);
+    void Append(const char* str);
+    void Append(char chr);
 };
 
 /*****************************************************************************
