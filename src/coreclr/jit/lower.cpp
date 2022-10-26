@@ -2940,7 +2940,7 @@ GenTree* Lowering::OptimizeConstCompare(GenTree* cmp)
                 {
                     GenTree* notNode   = comp->gtNewOperNode(GT_NOT, andOp1->TypeGet(), andOp1);
                     op1->AsOp()->gtOp1 = notNode;
-                    BlockRange().InsertBefore(andOp2, notNode);
+                    BlockRange().InsertAfter(andOp1, notNode);
                 }
 
                 cmpUse.ReplaceWith(op1);
@@ -3414,8 +3414,7 @@ void Lowering::LowerRet(GenTreeUnOp* ret)
                 bool constStructInit                  = retVal->IsConstInitVal();
                 bool implicitCastFromSameOrBiggerSize = (genTypeSize(retActualType) <= genTypeSize(retValActualType));
 
-                // This could happen if we have retyped op1 as a primitive type during struct promotion,
-                // check `retypedFieldsMap` for details.
+                // This could happen if we have retyped op1 as a primitive type during struct promotion.
                 bool actualTypesMatch = (retActualType == retValActualType);
 
                 assert(actualTypesMatch || constStructInit || implicitCastFromSameOrBiggerSize);
@@ -3719,6 +3718,7 @@ void Lowering::LowerRetStruct(GenTreeUnOp* ret)
             }
             break;
 
+        case GT_BLK:
         case GT_OBJ:
             retVal->ChangeOper(GT_IND);
             FALLTHROUGH;
@@ -6868,14 +6868,14 @@ bool Lowering::CheckMultiRegLclVar(GenTreeLclVar* lclNode, const ReturnTypeDesc*
         }
     }
 #ifdef TARGET_XARCH
-    // For local stores on XARCH we only handle mismatched src/dest register count for
-    // calls of SIMD type. If the source was another lclVar similarly promoted, we would
-    // have broken it into multiple stores.
-    if (lclNode->OperIs(GT_STORE_LCL_VAR) && !lclNode->gtGetOp1()->OperIs(GT_CALL))
+    // For local stores on XARCH we only handle mismatched src/dest register count for calls of SIMD type.
+    // If the source was another lclVar similarly promoted, we would have broken it into multiple stores.
+    if (lclNode->OperIs(GT_STORE_LCL_VAR) && varTypeIsStruct(lclNode->Data()) && !lclNode->Data()->OperIs(GT_CALL))
     {
         canEnregister = false;
     }
 #endif // TARGET_XARCH
+
     if (canEnregister)
     {
         lclNode->SetMultiReg();
@@ -6889,6 +6889,7 @@ bool Lowering::CheckMultiRegLclVar(GenTreeLclVar* lclNode, const ReturnTypeDesc*
         }
     }
 #endif
+
     return canEnregister;
 }
 
